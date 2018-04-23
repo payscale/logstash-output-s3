@@ -197,6 +197,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
 
     if !WritableDirectoryValidator.valid?(@temporary_directory)
       raise LogStash::ConfigurationError, "Logstash must have the permissions to write to the temporary directory: #{@temporary_directory}"
+
     end
 
     if @validate_credentials_on_root_bucket && !WriteBucketPermissionValidator.new(@logger).valid?(bucket_resource, upload_options)
