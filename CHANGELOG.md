@@ -1,3 +1,6 @@
+##4.1.2 -- aidanhl
+  - added ability to set a header_row and a csv file_extension
+
 ## 4.1.1
   - Docs: Set the default_codec doc attribute.
 

@@ -72,7 +72,7 @@ Aws.eager_autoload!
 #      size_file => 2048                        (optional) - Bytes
 #      time_file => 5                           (optional) - Minutes
 #      codec => "plain"                         (optional)
-#      canned_acl => "private"                  (optional. Options are "private", "public-read", "public-read-write", "authenticated-read", "aws-exec-read", "bucket-owner-read", "bucket-owner-full-control", "log-delivery-write". Defaults to "private" )
+#      canned_acl => "private"                  (optional. Options are "private", "public-read", "public-read-write", "authenticated-read". Defaults to "private" )
 #    }
 #
 class LogStash::Outputs::S3 < LogStash::Outputs::Base
@@ -103,10 +103,15 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
 
   concurrency :shared
 
+  # Change File Extension
+  config :file_extension, :validate => :string, :default => ""
+
+  # Recommend to use this with  a filter that produces an explicit set of fields no matter the input
+  # event
+  config :header_row, :validate => :string, :default => ""
+
   # S3 bucket
   config :bucket, :validate => :string, :required => true
-
-  config :additional_settings, :validate => :hash, :default => {}
 
   # Set the size of file in bytes, this means that files on bucket when have dimension > file_size, they are stored in two or more file.
   # If you have tags then it will generate a specific size file for every tags
@@ -126,7 +131,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
   config :restore, :validate => :boolean, :default => true
 
   # The S3 canned ACL to use when putting the file. Defaults to "private".
-  config :canned_acl, :validate => ["private", "public-read", "public-read-write", "authenticated-read", "aws-exec-read", "bucket-owner-read", "bucket-owner-full-control", "log-delivery-write"],
+  config :canned_acl, :validate => ["private", "public-read", "public-read-write", "authenticated-read"],
          :default => "private"
 
   # Specifies wether or not to use S3's server side encryption. Defaults to no encryption.
@@ -207,7 +212,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
       raise LogStash::ConfigurationError, "The S3 plugin must have at least one of time_file or size_file set to a value greater than 0"
     end
 
-    @file_repository = FileRepository.new(@tags, @encoding, @temporary_directory)
+    @file_repository = FileRepository.new(@tags, @encoding, @temporary_directory, @file_extension, @header_row)
 
     @rotation = rotation_strategy
 
@@ -269,9 +274,9 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
   end
 
   def full_options
-    options = aws_options_hash || {}
+    options = Hash.new
     options[:signature_version] = @signature_version if @signature_version
-    @additional_settings.merge(options)
+    options.merge(aws_options_hash)
   end
 
   def normalize_key(prefix_key)
@@ -340,10 +345,19 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
 
     # if the queue is full the calling thread will be used to upload
     temp_file.close # make sure the content is on disk
+
     if temp_file.size > 0
+
+      unless (:header_row.nil? || :header_row.empty? ) #if there is a header row
+        if (temp_file.size == :header_row.length)  #delete file and return if file only contains header row
+          clean_temporary_file(temp_file)
+          return
+        end
+      end
+
       @uploader.upload_async(temp_file,
                              :on_complete => method(:clean_temporary_file),
-                             :upload_options => upload_options )
+                             :upload_options => upload_options)
     end
   end
 
