@@ -28,12 +28,12 @@ Aws.eager_autoload!
 #
 # S3 output files have the following format
 #
-# ls.s3.ip-10-228-27-95.2013-04-18T10.00.tag_hello.part0.txt
+# ls.s3.312bc026-2f5d-49bc-ae9f-5940cf4ad9a6.2013-04-18T10.00.tag_hello.part0.txt
 #
 #
 # |=======
 # | ls.s3 | indicate logstash plugin s3 |
-# | ip-10-228-27-95 | indicates the ip of your machine. |
+# | 312bc026-2f5d-49bc-ae9f-5940cf4ad9a6 | a new, random uuid per file. |
 # | 2013-04-18T10.00 | represents the time whenever you specify time_file. |
 # | tag_hello | this indicates the event's tag. |
 # | part0 | this means if you indicate size_file then it will generate more parts if you file.size > size_file. When a file is full it will be pushed to the bucket and then deleted from the temporary directory. If a file is empty, it is simply deleted.  Empty files will not be pushed |
@@ -133,8 +133,22 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
   config :canned_acl, :validate => ["private", "public_read", "public_read_write", "authenticated_read"],
          :default => "private"
 
-  # Specifies wether or not to use S3's AES256 server side encryption. Defaults to false.
+  # Specifies wether or not to use S3's server side encryption. Defaults to no encryption.
   config :server_side_encryption, :validate => :boolean, :default => false
+
+  # Specifies what type of encryption to use when SSE is enabled.
+  config :server_side_encryption_algorithm, :validate => ["AES256", "aws:kms"], :default => "AES256"
+
+  # The key to use when specified along with server_side_encryption => aws:kms.
+  # If server_side_encryption => aws:kms is set but this is not default KMS key is used.
+  # http://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html
+  config :ssekms_key_id, :validate => :string
+
+  # Specifies what S3 storage class to use when uploading the file.
+  # More information about the different storage classes can be found:
+  # http://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html
+  # Defaults to STANDARD.
+  config :storage_class, :validate => ["STANDARD", "REDUCED_REDUNDANCY", "STANDARD_IA"], :default => "STANDARD"
 
   # Set the directory where logstash will store the tmp files before sending it to S3
   # default to the current OS temporary directory in linux /tmp/logstash
@@ -189,7 +203,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
       raise LogStash::ConfigurationError, "Logstash must have the permissions to write to the temporary directory: #{@temporary_directory}"
     end
 
-    if @validate_credentials_on_root_bucket && !WriteBucketPermissionValidator.valid?(bucket_resource)
+    if @validate_credentials_on_root_bucket && !WriteBucketPermissionValidator.new(@logger).valid?(bucket_resource)
       raise LogStash::ConfigurationError, "Logstash must have the privileges to write to root bucket `#{@bucket}`, check you credentials or your permissions."
     end
 
@@ -259,13 +273,23 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
   end
 
   def full_options
-    options = { :credentials => credentials }
-    options[:s3_signature_version] = @signature_version if @signature_version
+    options = Hash.new
+    options[:signature_version] = @signature_version if @signature_version
     options.merge(aws_options_hash)
   end
 
   def normalize_key(prefix_key)
     prefix_key.gsub(PathValidator.matches_re, PREFIX_KEY_NORMALIZE_CHARACTER)
+  end
+
+  def upload_options
+    {
+      :acl => @canned_acl,
+      :server_side_encryption => @server_side_encryption ? @server_side_encryption_algorithm : nil,
+      :ssekms_key_id => @server_side_encryption_algorithm == "aws:kms" ? @ssekms_key_id : nil,
+      :storage_class => @storage_class,
+      :content_encoding => @encoding == "gzip" ? "gzip" : nil
+    }
   end
 
   private
@@ -287,19 +311,11 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
   end
 
   def bucket_resource
-    Aws::S3::Bucket.new(@bucket, { :credentials => credentials }.merge(aws_options_hash))
+    Aws::S3::Bucket.new(@bucket, full_options)
   end
 
   def aws_service_endpoint(region)
     { :s3_endpoint => region == 'us-east-1' ? 's3.amazonaws.com' : "s3-#{region}.amazonaws.com"}
-  end
-
-  def upload_options
-    {
-      :acl => @cannel_acl,
-      :server_side_encryption => @server_side_encryption ? :aes256 : nil,
-      :content_encoding => @encoding == "gzip" ? "gzip" : nil
-    }
   end
 
   def rotate_if_needed(prefixes)

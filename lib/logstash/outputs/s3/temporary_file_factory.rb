@@ -50,10 +50,10 @@ module LogStash
 
         private
         def extension
-          if (@file_extension.nil? || @file_extension.empty?)
-            gzip? ? GZIP_EXTENSION : TXT_EXTENSION #returns GZIP if encoding == gzip, returns txt otherwise
+          if (@file_extension.nil? || @file_extension == "")
+            return (gzip? ? GZIP_EXTENSION : TXT_EXTENSION) #returns GZIP if encoding == gzip, returns txt otherwise
           end
-          @file_extension #returns csv if a file extension is specified
+          return @file_extension #returns csv if a file extension is specified
         end
 
         def gzip?
@@ -118,8 +118,14 @@ module LogStash
 
           def size
             # to get the current file size
-            @gzip_writer.flush
-            @gzip_writer.to_io.size
+            if @gzip_writer.pos == 0
+              # Ensure a zero file size is returned when nothing has
+              # yet been written to the gzip file.
+              0
+            else
+              @gzip_writer.flush
+              @gzip_writer.to_io.size
+            end
           end
 
           def fsync

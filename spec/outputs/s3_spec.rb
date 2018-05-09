@@ -25,7 +25,7 @@ describe LogStash::Outputs::S3 do
 
   before do
     allow(subject).to receive(:bucket_resource).and_return(mock_bucket)
-    allow(LogStash::Outputs::S3::WriteBucketPermissionValidator).to receive(:valid?).with(mock_bucket).and_return(true)
+    allow_any_instance_of(LogStash::Outputs::S3::WriteBucketPermissionValidator).to receive(:valid?).with(mock_bucket).and_return(true)
   end
 
   context "#register configuration validation" do
@@ -33,13 +33,92 @@ describe LogStash::Outputs::S3 do
       it "should set the signature version if specified" do
         ["v2", "v4"].each do |version|
           s3 = described_class.new(options.merge({ "signature_version" => version }))
-          expect(s3.full_options).to include(:s3_signature_version => version)
+          expect(s3.full_options).to include(:signature_version => version)
         end
       end
 
       it "should omit the option completely if not specified" do
         s3 = described_class.new(options)
-        expect(s3.full_options.has_key?(:s3_signature_version)).to eql(false)
+        expect(s3.full_options.has_key?(:signature_version)).to eql(false)
+      end
+    end
+
+    describe "Access control list" do
+      context "when configured" do
+        ["private", "public_read", "public_read_write", "authenticated_read"].each do |permission|
+          it "should return the configured ACL permissions: #{permission}" do
+            s3 = described_class.new(options.merge({ "canned_acl" => permission }))
+            expect(s3.upload_options).to include(:acl => permission)
+          end
+        end
+      end
+
+      context "when not configured" do
+        it "uses private as the default" do
+          s3 = described_class.new(options)
+          expect(s3.upload_options).to include(:acl => "private")
+        end
+      end
+    end
+
+    describe "Service Side Encryption" do
+
+      context "when configured" do
+          it "should be configure" do
+            s3 = described_class.new(options.merge({ "server_side_encryption" => true }))
+            expect(s3.upload_options).to include(:server_side_encryption => "AES256")
+          end
+        end
+
+      context "when algorithm is configured" do
+        ["AES256", "aws:kms"].each do |sse|
+          it "should return the configured SSE: #{sse}" do
+            s3 = described_class.new(options.merge({ "server_side_encryption" => true, "server_side_encryption_algorithm" => sse }))
+            expect(s3.upload_options).to include(:server_side_encryption => sse)
+          end
+        end
+      end
+
+      context "when using SSE with KMS and custom key" do
+        it "should return the configured KMS key" do
+          s3 = described_class.new(options.merge({ "server_side_encryption" => true, "server_side_encryption_algorithm" => "aws:kms",  "ssekms_key_id" => "test"}))
+          expect(s3.upload_options).to include(:server_side_encryption => "aws:kms")
+          expect(s3.upload_options).to include(:ssekms_key_id => "test")
+        end
+      end
+
+      context "when using SSE with KMS but no custom key" do
+        it "should return the configured KMS key" do
+          s3 = described_class.new(options.merge({ "server_side_encryption" => true, "server_side_encryption_algorithm" => "aws:kms"}))
+          expect(s3.upload_options).to include(:server_side_encryption => "aws:kms")
+          expect(s3.upload_options).to include(:ssekms_key_id => nil)
+        end
+      end
+
+      context "when not configured" do
+          it "should not be configured" do
+            s3 = described_class.new(options)
+            expect(s3.upload_options).to include(:server_side_encryption => nil)
+            expect(s3.upload_options).to include(:ssekms_key_id => nil)
+          end
+      end
+    end
+
+    describe "Storage Class" do
+      context "when configured" do
+        ["STANDARD", "REDUCED_REDUNDANCY", "STANDARD_IA"].each do |storage_class|
+          it "should return the configured storage class: #{storage_class}" do
+            s3 = described_class.new(options.merge({ "storage_class" => storage_class }))
+            expect(s3.upload_options).to include(:storage_class => storage_class)
+          end
+        end
+      end
+
+      context "when not configured" do
+        it "uses STANDARD as the default" do
+          s3 = described_class.new(options)
+          expect(s3.upload_options).to include(:storage_class => "STANDARD")
+        end
       end
     end
 
@@ -66,7 +145,7 @@ describe LogStash::Outputs::S3 do
 
     it "allow to not validate credentials" do
       s3 = described_class.new(options.merge({"validate_credentials_on_root_bucket" => false}))
-      expect(LogStash::Outputs::S3::WriteBucketPermissionValidator).not_to receive(:valid?).with(any_args)
+      expect_any_instance_of(LogStash::Outputs::S3::WriteBucketPermissionValidator).not_to receive(:valid?).with(any_args)
       s3.register
     end
   end
