@@ -345,10 +345,10 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
     # if the queue is full the calling thread will be used to upload
     temp_file.close # make sure the content is on disk
     if temp_file.size > 0
-      unless (:header_row.nil? || :header_row.empty? ) #if there is a header row
-        if (temp_file.size == :header_row.length)  #delete file and return if file only contains header row
+      unless (@header_row.nil? || @header_row.empty? ) #if there is a header row
+        if (temp_file.size == @header_row.length)  #delete file and return if file only contains header row
           clean_temporary_file(temp_file)
-        return
+          return
         end
       end
       
