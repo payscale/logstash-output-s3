@@ -26,13 +26,15 @@ module LogStash
 
         attr_accessor :counter, :tags, :prefix, :encoding, :temporary_directory, :current
 
-        def initialize(prefix, tags, encoding, temporary_directory)
+        def initialize(prefix, tags, encoding, temporary_directory, file_extension, header_row)
           @counter = 0
           @prefix = prefix
 
           @tags = tags
           @encoding = encoding
           @temporary_directory = temporary_directory
+          @file_extension = file_extension
+          @header_row = header_row
           @lock = Mutex.new
 
           rotate!
@@ -48,7 +50,10 @@ module LogStash
 
         private
         def extension
-          gzip? ? GZIP_EXTENSION : TXT_EXTENSION
+          if (@file_extension.nil? || @file_extension == "")
+            return (gzip? ? GZIP_EXTENSION : TXT_EXTENSION) #returns GZIP if encoding == gzip, returns txt otherwise
+          end
+          return @file_extension #returns csv if a file extension is specified
         end
 
         def gzip?
@@ -89,7 +94,11 @@ module LogStash
                  ::File.open(::File.join(path, key), FILE_MODE)
                end
 
-          TemporaryFile.new(key, io, path)
+          newFile = TemporaryFile.new(key, io, path)
+          unless (@header_row.nil? || @header_row.empty?)
+            newFile.write("#{@header_row}\n")
+          end
+          return newFile
         end
 
         class IOWrappedGzip

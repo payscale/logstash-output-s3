@@ -103,6 +103,12 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
 
   concurrency :shared
 
+  # Change File Extension
+  config :file_extension, :validate => :string, :default => ""
+
+  # Recommend to use this with  a filter that produces an explicit set of fields no matter the input event
+  config :header_row, :validate => :string, :default => ""
+
   # S3 bucket
   config :bucket, :validate => :string, :required => true
 
@@ -205,7 +211,7 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
       raise LogStash::ConfigurationError, "The S3 plugin must have at least one of time_file or size_file set to a value greater than 0"
     end
 
-    @file_repository = FileRepository.new(@tags, @encoding, @temporary_directory)
+    @file_repository = FileRepository.new(@tags, @encoding, @temporary_directory, @file_extension, @header_row)
 
     @rotation = rotation_strategy
 
@@ -339,6 +345,13 @@ class LogStash::Outputs::S3 < LogStash::Outputs::Base
     # if the queue is full the calling thread will be used to upload
     temp_file.close # make sure the content is on disk
     if temp_file.size > 0
+      unless (@header_row.nil? || @header_row.empty? ) #if there is a header row
+        if (temp_file.size == @header_row.length)  #delete file and return if file only contains header row
+          clean_temporary_file(temp_file)
+          return
+        end
+      end
+      
       @uploader.upload_async(temp_file,
                              :on_complete => method(:clean_temporary_file),
                              :upload_options => upload_options )

@@ -1,3 +1,7 @@
+
+## 4.0.7 -- aidanl
+    - added header row and csv file extension functionality
+
 ## 4.0.6
   - Fix: Use the right `signature_version` for the SDK v2 #129
   - Fix an issue to prevent the output to upload empty file to S3 #128
@@ -20,6 +24,7 @@
 
 ## 4.0.1
   - Improved Error logging for S3 validation. Now specific S3 perms errors are logged
+>>>>>>> master
 
 ## 4.0.0
   - This version is a complete rewrite over version 3.0.0 See #103
